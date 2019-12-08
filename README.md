@@ -42,7 +42,7 @@ To add the MQTT output to [Home-assistant](https://home-assistant.io/), we use a
 - platform: mqtt
   name: 'bme680-gas_ohms'
   state_topic: 'hass_bme680/bme680-0x76-gas_ohms'
-  unit_of_measurement: 'ohms'
+  unit_of_measurement: 'Ω'
 ```
 
 I then created a group, in groups.yaml:
