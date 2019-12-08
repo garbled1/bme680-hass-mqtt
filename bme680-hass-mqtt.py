@@ -20,7 +20,7 @@ def parse_cmdline():
     parser.add_argument('-p', '--poll_time', type=int, action='store',
                         default=5, help='How often in seconds to poll sensor')
     parser.add_argument('-t', '--topic', type=str, action='store',
-                        default='', help='MQTT Topic')
+                        default='hass_bme680/', help='MQTT Topic')
     parser.add_argument('--broker', type=str, action='store',
                         default='127.0.0.1', help='MQTT Broker')
     parser.add_argument('--humid_baseline', type=int, action='store',
@@ -119,11 +119,11 @@ def poll_sensor(sensor, mq_client, poll_time, topic, hum_baseline, gas_baseline,
             if debug_mode:
                 print("Gas: {0:.2f} Ohms,humidity: {1:.2f} %RH,air quality: {2:.2f}".format(gas, hum, air_quality_score))
             
-            client.publish(topic + 'bme680-' + bme_addr + '-humidity', humidity)
-            client.publish(topic + 'bme680-' + bme_addr + '-temperature', temperature)
-            client.publish(topic + 'bme680-' + bme_addr + '-pressure', pressure)
-            client.publish(topic + 'bme680-' + bme_addr + '-air_qual', air_qual)
-            client.publish(topic + 'bme680-' + bme_addr + '-gas_ohms', raw_gas)
+            mq_client.publish(topic + 'bme680-' + bme_addr + '-humidity', humidity)
+            mq_client.publish(topic + 'bme680-' + bme_addr + '-temperature', temperature)
+            mq_client.publish(topic + 'bme680-' + bme_addr + '-pressure', pressure)
+            mq_client.publish(topic + 'bme680-' + bme_addr + '-air_qual', air_qual)
+            mq_client.publish(topic + 'bme680-' + bme_addr + '-gas_ohms', raw_gas)
             time.sleep(poll_time)
 
 
