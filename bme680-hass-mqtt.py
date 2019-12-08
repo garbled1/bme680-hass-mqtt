@@ -1,87 +1,99 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import bme680
 import time
-
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 
-print("""Estimate indoor air quality
+debug_mode = False
 
-Runs the sensor for a burn-in period, then uses a 
-combination of relative humidity and gas resistance
-to estimate indoor air quality as a percentage.
+def parse_cmdline():
+    parser = argparse.ArgumentParser(description='Collect data from a BME680 i2c Sensor and publish to MQTT')
 
-Press Ctrl+C to exit
+    parser.add_argument('-c', '--conf', type=str, action='store',
+                        default='/usr/local/etc/bme680coll.conf',
+                        help='Path to config file')
+    parser.add_argument('-d', '--debug', action='store_true', default=False,
+                        help='Debug mode')
+    parser.add_argument('-a', '--address', type=str, action='store',
+                        default='0x76', help='i2c address of BME680')
+    parser.add_argument('-b', '--burn_in', type=int, action='store',
+                        default=300, help='Seconds to warm up gas sensor')
+    parser.add_argument('-p', '--poll_time', type=int, action='store',
+                        default=5, help='How often in seconds to poll sensor')
+    parser.add_argument('-t', '--topic', type=str, action='store',
+                        default='', help='MQTT Topic')
+    parser.add_argument('--broker', type=str, action='store',
+                        default='127.0.0.1', help='MQTT Broker')
+    parser.add_argument('--humid_baseline', type=int, action='store',
+                        default=40, help='Humidity baseline')
+    parser.add_argument('--humid_weight', type=float, action='store',
+                        default=0.25, help='Humitidy weight for air quality calc')
+    args = parser.parse_args()
+    return args
 
-""")
 
-### MQTT
-broker = '192.168.0.30'
-topic ='test'
+def init_bme680(bme_addr):
+    try:
+        sensor = bme680.BME680(i2c_addr=bme_addr)
+        sensor.set_humidity_oversample(bme680.OS_2X)
+        sensor.set_pressure_oversample(bme680.OS_4X)
+        sensor.set_temperature_oversample(bme680.OS_8X)
+        sensor.set_filter(bme680.FILTER_SIZE_0)
+        sensor.set_gas_status(bme680.ENABLE_GAS_MEAS)
+        sensor.set_gas_heater_temperature(320)
+        sensor.set_gas_heater_duration(150)
+        sensor.select_gas_heater_profile(0)
+        return sensor
+    except Exception:
+        print("Cannot initialize BME680 at addr {0}".format(str(bme_addr)))
 
-client = mqtt.Client()
-client.connect(broker)
-client.loop_start()
 
-### bme680
+def burn_in_sensor(sensor, burn_in_time):
+    global debug_mode
+    start_time = time.time()
+    curr_time = time.time()
+    burn_in_data = []
+    gas_baseline = 0
 
-sensor = bme680.BME680()
-
-# These oversampling settings can be tweaked to 
-# change the balance between accuracy and noise in
-# the data.
-
-sensor.set_humidity_oversample(bme680.OS_2X)
-sensor.set_pressure_oversample(bme680.OS_4X)
-sensor.set_temperature_oversample(bme680.OS_8X)
-sensor.set_filter(bme680.FILTER_SIZE_3)
-sensor.set_gas_status(bme680.ENABLE_GAS_MEAS)
-
-sensor.set_gas_heater_temperature(320)
-sensor.set_gas_heater_duration(150)
-sensor.select_gas_heater_profile(0)
-
-# start_time and curr_time ensure that the 
-# burn_in_time (in seconds) is kept track of.
-
-start_time = time.time()
-curr_time = time.time()
-burn_in_time = 1  # burn_in_time (in seconds) is kept track of.
-
-burn_in_data = []
-
-try:
-    # Collect gas resistance burn-in values, then use the average
-    # of the last 50 values to set the upper limit for calculating
-    # gas_baseline.
-    print("Collecting gas resistance burn-in data for 5 mins\n")
     while curr_time - start_time < burn_in_time:
         curr_time = time.time()
         if sensor.get_sensor_data() and sensor.data.heat_stable:
             gas = sensor.data.gas_resistance
             burn_in_data.append(gas)
-            print("Gas: {0} Ohms".format(gas))
-            time.sleep(1)
+            if debug_mode:
+                print("Gas: {0:.2f} Ohms  Time:{1:.2f}".format(gas, curr_time - start_time))
+        time.sleep(1)
 
     gas_baseline = sum(burn_in_data[-50:]) / 50.0
+    if debug_mode:
+        print("Computed gas baseline: {0} Ohms".format(gas_baseline))
 
-    # Set the humidity baseline to 40%, an optimal indoor humidity.
-    hum_baseline = 40.0
+    return gas_baseline
 
-    # This sets the balance between humidity and gas reading in the 
-    # calculation of air_quality_score (25:75, humidity:gas)
-    hum_weighting = 0.25
 
-    print("Gas baseline: {0} Ohms, humidity baseline: {1:.2f} %RH\n".format(gas_baseline, hum_baseline))
+def init_mqtt(broker):
+    global debug_mode
+    try:
+        mq_client = mqtt.Client()
+        mq_client.connect(broker)
+        mq_client.loop_start()
+    except Exception:
+        print("Unable to connect to MQTT broker at {0}".format(str(broker)))
+        exit(1)
+    return mq_client
 
+
+def poll_sensor(sensor, mq_client, poll_time, topic, hum_baseline, gas_baseline, hum_weighting, bme_addr):
     while True:
         if sensor.get_sensor_data() and sensor.data.heat_stable:
             gas = sensor.data.gas_resistance
             gas_offset = gas_baseline - gas
-
             hum = sensor.data.humidity
             hum_offset = hum - hum_baseline
+            # When the gas sensor is running, the temp is high by 2 deg C
+            temp = sensor.data.temperature - 2.0
+            send_temp = temp
 
             # Calculate hum_score as the distance from the hum_baseline.
             if hum_offset > 0:
@@ -104,14 +116,43 @@ try:
             temperature = str(round(sensor.data.temperature, 2))
             pressure = str(round(sensor.data.pressure, 2))
             air_qual = str(round(air_quality_score, 2))
+            raw_gas = str(round(gas, 2))
 
-            print("Gas: {0:.2f} Ohms,humidity: {1:.2f} %RH,air quality: {2:.2f}".format(gas, hum, air_quality_score))
+            if debug_mode:
+                print("Gas: {0:.2f} Ohms,humidity: {1:.2f} %RH,air quality: {2:.2f}".format(gas, hum, air_quality_score))
             
-            client.publish('bme680-humidity', humidity)
-            client.publish('bme680-temperature', temperature)
-            client.publish('bme680-pressure', pressure)
-            client.publish('bme680-air_qual', air_qual)
-            time.sleep(1)
+            client.publish(topic + 'bme680-' + bme_addr + '-humidity', humidity)
+            client.publish(topic + 'bme680-' + bme_addr + '-temperature', temperature)
+            client.publish(topic + 'bme680-' + bme_addr + '-pressure', pressure)
+            client.publish(topic + 'bme680-' + bme_addr + '-air_qual', air_qual)
+            client.publish(topic + 'bme680-' + bme_addr + '-gas_ohms', raw_gas)
+            time.sleep(poll_time)
 
-except KeyboardInterrupt:
-    pass
+
+def main:
+    global debug_mode
+
+    args = parse_cmdline()
+    if args.debug:
+        debug_mode = args.debug
+
+    i2c_addr_int = int(args.address, 16)
+
+    sensor = init_bme680(i2c_addr_int)
+    if sensor is None:
+        print("Could not initialize BME680 at {0}".format(args.address))
+        exit(1)
+
+    mq_client = init_mqtt(args.broker)
+
+    gas_baseline = burn_in_sensor(sensor, args.burn_in_time)
+
+    poll_sensor(sensor, mq_client, args.poll_time, args.topic,
+                args.humid_baseline, gas_baseline, args.humid_weight,
+                args.address)
+    return
+
+
+if __name__ == "__main__":
+    main()
+
