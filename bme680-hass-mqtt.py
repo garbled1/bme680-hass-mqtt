@@ -143,7 +143,7 @@ def main():
 
     mq_client = init_mqtt(args.broker)
 
-    gas_baseline = burn_in_sensor(sensor, args.burn_in_time)
+    gas_baseline = burn_in_sensor(sensor, args.burn_in)
 
     poll_sensor(sensor, mq_client, args.poll_time, args.topic,
                 args.humid_baseline, gas_baseline, args.humid_weight,
