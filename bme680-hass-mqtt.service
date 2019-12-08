@@ -1,0 +1,12 @@
+[Unit]
+Description=BME680 MQTT Home Assistant device
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=python3 /usr/local/bin/bme680-hass-mqtt.py --address %i --broker 192.168.10.75
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -10,9 +10,6 @@ debug_mode = False
 def parse_cmdline():
     parser = argparse.ArgumentParser(description='Collect data from a BME680 i2c Sensor and publish to MQTT')
 
-    parser.add_argument('-c', '--conf', type=str, action='store',
-                        default='/usr/local/etc/bme680coll.conf',
-                        help='Path to config file')
     parser.add_argument('-d', '--debug', action='store_true', default=False,
                         help='Debug mode')
     parser.add_argument('-a', '--address', type=str, action='store',
