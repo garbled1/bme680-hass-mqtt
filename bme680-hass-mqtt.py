@@ -126,7 +126,7 @@ def poll_sensor(sensor, mq_client, poll_time, topic, hum_baseline, gas_baseline,
             time.sleep(poll_time)
 
 
-def main:
+def main():
     global debug_mode
 
     args = parse_cmdline()
