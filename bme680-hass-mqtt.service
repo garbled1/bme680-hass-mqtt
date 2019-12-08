@@ -4,7 +4,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=python3 /usr/local/bin/bme680-hass-mqtt.py --address %i --broker 192.168.10.75
+ExecStart=/usr/bin/python3 /usr/local/bin/bme680-hass-mqtt.py --address %i --broker 192.168.10.75
 Restart=on-failure
 RestartSec=5s
 
