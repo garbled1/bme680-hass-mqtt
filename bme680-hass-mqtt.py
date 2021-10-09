@@ -27,6 +27,8 @@ def parse_cmdline():
                         default=None, help='MQTT Username')
     parser.add_argument('-w', '--password', type=str, action='store',
                         default=None, help='MQTT Password')
+    parser.add_argument('-i', '--client_id', type=str, action='store',
+                        default='bme680', help='MQTT Broker')
     parser.add_argument('--broker', type=str, action='store',
                         default='127.0.0.1', help='MQTT Broker')
     parser.add_argument('--humid_baseline', type=int, action='store',
@@ -78,8 +80,9 @@ def burn_in_sensor(sensor, burn_in_time):
 
 def init_mqtt(broker, args):
     global debug_mode
+    c_id = args.client_id + '_' + args.address
     try:
-        mq_client = mqtt.Client()
+        mq_client = mqtt.Client(client_id=c_id)
         if args.user is not None and args.password is not None:
             mq_client.username_pw_set(username=args.user, password=args.password)
         mq_client.connect(broker)
