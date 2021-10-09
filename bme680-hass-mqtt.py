@@ -6,7 +6,9 @@ import argparse
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 
+
 debug_mode = False
+
 
 def parse_cmdline():
     parser = argparse.ArgumentParser(description='Collect data from a BME680 i2c Sensor and publish to MQTT')
@@ -21,6 +23,10 @@ def parse_cmdline():
                         default=5, help='How often in seconds to poll sensor')
     parser.add_argument('-t', '--topic', type=str, action='store',
                         default='hass_bme680/', help='MQTT Topic')
+    parser.add_argument('-u', '--user', type=str, action='store',
+                        default=None, help='MQTT Username')
+    parser.add_argument('-w', '--password', type=str, action='store',
+                        default=None, help='MQTT Password')
     parser.add_argument('--broker', type=str, action='store',
                         default='127.0.0.1', help='MQTT Broker')
     parser.add_argument('--humid_baseline', type=int, action='store',
@@ -70,10 +76,12 @@ def burn_in_sensor(sensor, burn_in_time):
     return gas_baseline
 
 
-def init_mqtt(broker):
+def init_mqtt(broker, args):
     global debug_mode
     try:
         mq_client = mqtt.Client()
+        if args.user is not None and args.password is not None:
+            mq_client.username_pw_set(username=args.user, password=args.password)
         mq_client.connect(broker)
         mq_client.loop_start()
     except Exception:
@@ -107,9 +115,9 @@ def poll_sensor(sensor, mq_client, poll_time, topic, hum_baseline, gas_baseline,
             else:
                 gas_score = 100 - (hum_weighting * 100)
 
-            # Calculate air_quality_score. 
+            # Calculate air_quality_score.
             air_quality_score = hum_score + gas_score
-            
+
             humidity = str(round(hum, 2))
             temperature = str(round(sensor.data.temperature, 2))
             pressure = str(round(sensor.data.pressure, 2))
@@ -118,7 +126,7 @@ def poll_sensor(sensor, mq_client, poll_time, topic, hum_baseline, gas_baseline,
 
             if debug_mode:
                 print("Gas: {0:.2f} Ohms,humidity: {1:.2f} %RH,air quality: {2:.2f}".format(gas, hum, air_quality_score))
-            
+
             mq_client.publish(topic + 'bme680-' + bme_addr + '-humidity', humidity)
             mq_client.publish(topic + 'bme680-' + bme_addr + '-temperature', temperature)
             mq_client.publish(topic + 'bme680-' + bme_addr + '-pressure', pressure)
@@ -141,7 +149,7 @@ def main():
         print("Could not initialize BME680 at {0}".format(args.address))
         exit(1)
 
-    mq_client = init_mqtt(args.broker)
+    mq_client = init_mqtt(args.broker, args)
 
     gas_baseline = burn_in_sensor(sensor, args.burn_in)
 
